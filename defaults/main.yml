@@ -1,0 +1,52 @@
+---
+### Install variables
+container_wordpress_container_type: "local"
+container_wordpress_user: root
+container_wordpress_group: root
+container_wordpress_site_name: test
+container_wordpress_config_dir: "/data/config/wordpress_{{ container_wordpress_site_name }}"
+container_wordpress_log_dir: "/data/log/wordpress_{{ container_wordpress_site_name }}"
+container_wordpress_persistent_dir: "/data/persistent/wordpress_{{ container_wordpress_site_name }}"
+container_wordpress_network: bridge
+
+### Traefik variables
+container_wordpress_url: wp.exemple.com
+
+### database variables
+container_wordpress_mariadb_deploy: true
+container_wordpress_mariadb_name: "wordpress-mariadb-{{ container_wordpress_site_name }}"
+container_wordpress_mariadb_root_pwd: supersecurepwd
+container_wordpress_mariadb_db: wordpress
+container_wordpress_mariadb_user: wordpress
+container_wordpress_mariadb_user_pwd: securepwd
+container_wordpress_mariadb_volumes:
+  - "{{ container_wordpress_persistent_dir }}/mariadb:/var/lib/mysql:rw"
+#  - "/etc/timezone:/etc/timezone:ro"
+#  - "/etc/localtime:/etc/localtime:ro"
+container_wordpress_mariadb_env:
+  MYSQL_ROOT_PASSWORD: "{{ container_wordpress_mariadb_root_pwd }}"
+  MYSQL_DATABASE: "{{ container_wordpress_mariadb_db }}"
+  MYSQL_USER: "{{ container_wordpress_mariadb_user }}"
+  MYSQL_PASSWORD: "{{ container_wordpress_mariadb_user_pwd }}"
+
+### wordpress variables
+container_wordpress_name: "wordpress-{{ container_wordpress_site_name }}"
+container_wordpress_exposed_port: 82
+container_wordpress_db_host: "{{ container_wordpress_mariadb_name }}"
+container_wordpress_db: "{{ container_wordpress_mariadb_db }}"
+container_wordpress_db_user: "{{ container_wordpress_mariadb_user }}"
+container_wordpress_db_user_pwd: "{{ container_wordpress_mariadb_user_pwd }}"
+container_wordpress_volumes:
+  #- "/etc/timezone:/etc/timezone:ro"
+  #- "/etc/localtime:/etc/localtime:ro"
+  - "{{ container_wordpress_persistent_dir }}/www/:/var/www/html/"
+  - "{{ container_wordpress_log_dir }}:/var/log/apache2/"
+container_wordpress_env:
+  WORDPRESS_DB_HOST: "{{ container_wordpress_db_host }}"
+  WORDPRESS_DB_NAME: "{{ container_wordpress_db }}"
+  WORDPRESS_DB_USER: "{{ container_wordpress_db_user }}"
+  WORDPRESS_DB_PASSWORD: "{{ container_wordpress_db_user_pwd }}"
+  #SERVICE_TAGS: "endpoint,traefik.enable=true,traefik.http.routers.wordpress.rule=Host(`{{ container_wordpress_url }}`), traefik.http.routers.router0.entrypoints=
+container_wordpress_labels:
+  traefik.enable: "true"
+  traefik.http.routers.wordpress.rule: "Host(`{{ container_wordpress_url }}`)"

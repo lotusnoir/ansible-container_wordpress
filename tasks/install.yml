@@ -1,0 +1,116 @@
+---
+- name: Ensure docker is installed
+  ansible.builtin.package:
+    name: "{{ container_docker_pkg }}"
+    state: present
+
+- name: Ensures wordpress dir exists
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: 0755
+    state: directory
+    #owner: "{{ container_wordpress_user }}"
+    #group: "{{ container_wordpress_group }}"
+  with_items:
+    - "{{ container_wordpress_config_dir }}"
+    - "{{ container_wordpress_log_dir }}"
+    - "{{ container_wordpress_persistent_dir }}/www"
+    - "{{ container_wordpress_persistent_dir }}/mariadb"
+
+- name: "local tasks"
+  when: container_wordpress_container_type == "local"
+  block:
+    - name: "Launch wordpress-mariadb container"
+      community.docker.docker_container:
+        name: "{{ container_wordpress_mariadb_name }}"
+        image: mariadb:latest
+        restart_policy: unless-stopped
+        volumes: "{{ container_wordpress_mariadb_volumes }}"
+        env: "{{ container_wordpress_mariadb_env }}"
+        networks:
+          - name: "{{ container_wordpress_network }}"
+      when: container_wordpress_mariadb_deploy | bool
+
+    - name: "Launch wordpress container"
+      community.docker.docker_container:
+        name: "{{ container_wordpress_name }}"
+        image: wordpress:latest
+        ports:
+          - "{{ container_wordpress_exposed_port }}:80"
+        restart_policy: unless-stopped
+        volumes: "{{ container_wordpress_volumes }}"
+        env: "{{ container_wordpress_env }}"
+        labels: "{{ container_wordpress_labels }}"
+        networks:
+          - name: "{{ container_wordpress_network }}"
+
+- name: "Swarm tasks"
+  when: container_wordpress_container_type == "swarm"
+  block:
+    - name: "Launch mariadb container service"
+      community.docker.docker_swarm_service:
+        name: "{{ container_wordpress_mariadb_name }}"
+        image: mariadb:latest
+        restart_config:
+          condition: on-failure
+          delay: 2s
+          max_attempts: 3
+        mounts:
+          - source: "/etc/timezone"
+            target: "/etc/timezone:ro"
+            readonly: true
+          - source: "/etc/localtime"
+            target: "/etc/localtime:ro"
+            readonly: true
+          - source: "{{ container_wordpress_persistent_dir }}/mariadb"
+            target: "/var/lib/mysql"
+            #type: bind
+        env:
+          MYSQL_ROOT_PASSWORD: "{{ container_wordpress_mariadb_root_pwd }}"
+          MYSQL_DATABASE: "{{ container_wordpress_mariadb_db }}"
+          MYSQL_USER: "{{ container_wordpress_mariadb_user }}"
+          MYSQL_PASSWORD: "{{ container_wordpress_mariadb_user_pwd }}"
+        networks:
+          - name: "{{ container_wordpress_network }}"
+
+    - name: "Launch wordpress container service"
+      community.docker.docker_swarm_service:
+        name: "{{ container_wordpress_name }}"
+        image: wordpress:latest
+        restart_config:
+          condition: on-failure
+          delay: 2s
+          max_attempts: 3
+        publish:
+          - published_port: "{{ container_wordpress_exposed_port }}"
+            target_port: 80
+            protocol: tcp
+        mounts:
+          - source: "/etc/timezone"
+            target: "/etc/timezone:ro"
+            readonly: true
+          - source: "/etc/localtime"
+            target: "/etc/localtime:ro"
+            readonly: true
+          - source: "{{ container_wordpress_persistent_dir }}/www"
+            target: "/var/www/html/"
+            type: bind
+          - source: "{{ container_wordpress_log_dir }}"
+            target: "/var/log/apache2/"
+            type: bind
+        env:
+          WORDPRESS_DB_HOST: "{{ container_wordpress_db_host }}"
+          WORDPRESS_DB_NAME: "{{ container_wordpress_db }}"
+          WORDPRESS_DB_USER: "{{ container_wordpress_db_user }}"
+          WORDPRESS_DB_PASSWORD: "{{ container_wordpress_db_user_pwd }}"
+          ### For ConsulCatalog Provider
+          #SERVICE_TAGS: "endpoint,traefik.enable=true,traefik.http.routers.wordpress.rule=Host(`{{ container_wordpress_url }}`), traefik.http.routers.router0.entrypoints=web, traefik.http.services.wordpress.loadbalancer.server.port={{ container_wordpress_exposed_port }}"
+          #SERVICE_TAGS: "endpoint,traefik.enable=true,traefik.http.routers.wordpress.rule=Host(`{{ container_wordpress_url }}`), traefik.http.services.wordpress.loadbalancer.server.port=80, traefik.http.routers.wordpress.entrypoints=web"
+          SERVICE_TAGS: "endpoint,traefik.enable=true,traefik.http.routers.wordpress.rule=Host(`{{ container_wordpress_url }}`)"
+        #,traefik.http.services.wordpress.loadbalancer.server.port={{ container_wordpress_exposed_port }}"
+        ### For Docker Provider
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.wordpress.rule: "Host(`{{ container_wordpress_url }}`)"
+        networks:
+          - name: "{{ container_wordpress_network }}"

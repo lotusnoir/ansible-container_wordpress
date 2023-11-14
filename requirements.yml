@@ -1,0 +1,7 @@
+---
+roles:
+  - src: lotusnoir.apps_docker
+  - src: geerlingguy.pip
+
+collections:
+  - name: community.docker
